@@ -3,7 +3,7 @@ from pydantic import BaseModel
 import numpy as np
 import joblib
 
-# Load trained model
+# Load trained pipeline (scaler + model)
 model = joblib.load("Model/model.pkl")
 
 app = FastAPI(title="Wine Quality Prediction API")
@@ -42,8 +42,10 @@ def predict_quality(data: WineInput):
         data.alcohol
     ]])
 
-    prediction = model.predict(features)
+    prediction = model.predict(features)[0]
 
     return {
-        "predicted_quality": float(prediction[0])
+        "name": "Varun Mohan",
+        "roll_no": "2022BCS0034",
+        "wine_quality": int(round(prediction))
     }

@@ -1,0 +1,12 @@
+Lab 3 – Model Selection Details
+
+Selected Experiment: Experiment 5
+Model Type: Ridge Regression
+Preprocessing: StandardScaler
+
+Commit Hash: d98bb4c
+Workflow Run ID: 20843104394
+
+Metrics:
+MSE: 0.39003658082449677
+R2: 0.4031628405022719

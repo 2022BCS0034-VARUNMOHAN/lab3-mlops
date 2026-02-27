@@ -36,7 +36,7 @@ pipeline {
         stage('Send Valid Request') {
             steps {
                 sh '''
-                curl -X POST http://localhost:8000/predict \
+                curl -X POST http://wine_test_container:8000/predict \
                 -H "Content-Type: application/json" \
                 -d @tests/valid_input.json > response.json
                 '''
@@ -55,7 +55,7 @@ pipeline {
         stage('Send Invalid Request') {
             steps {
                 sh '''
-                curl -X POST http://localhost:8000/predict \
+                curl -X POST http://wine_test_container:8000/predict \
                 -H "Content-Type: application/json" \
                 -d @tests/invalid_input.json || true
                 '''

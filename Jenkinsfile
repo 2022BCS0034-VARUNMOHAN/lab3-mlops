@@ -2,48 +2,56 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "varuna10/varunmohanbcs34-wine-quality:latest"
-        CONTAINER_NAME = "wine_api_test"
+        IMAGE = "varuna10/varunmohanbcs34-wine-quality:latest"
+        CONTAINER = "wine-test-container"
+        PORT = "8000"
     }
 
     stages {
 
-        stage('Pull Image') {
+        stage('Pull Docker Image') {
             steps {
-                sh 'docker pull $IMAGE_NAME'
+                sh 'docker pull $IMAGE'
             }
         }
 
         stage('Run Container') {
             steps {
                 sh '''
-                docker rm -f $CONTAINER_NAME || true
-                docker run -d -p 8000:8000 --name $CONTAINER_NAME $IMAGE_NAME
+                docker rm -f $CONTAINER || true
+                docker run -d -p 8000:8000 --name $CONTAINER $IMAGE
                 '''
             }
         }
 
-        stage('Wait for API') {
+        stage('Wait for API Readiness') {
             steps {
                 sh '''
                 echo "Waiting for API..."
-                for i in {1..20}
+                for i in {1..30}
                 do
-                    sleep 3
-                    curl -s http://localhost:8000/health && break
+                    if curl -s http://localhost:8000/health > /dev/null
+                    then
+                        echo "API is ready!"
+                        exit 0
+                    fi
+                    sleep 2
                 done
+                echo "API failed to start"
+                exit 1
                 '''
             }
         }
 
-        stage('Valid Request Test') {
+        stage('Send Valid Request') {
             steps {
                 sh '''
-                echo "Sending VALID request"
+                echo "Sending valid input..."
                 RESPONSE=$(curl -s -X POST http://localhost:8000/predict \
                 -H "Content-Type: application/json" \
                 -d @tests/valid_input.json)
 
+                echo "API Response:"
                 echo $RESPONSE
 
                 echo $RESPONSE | grep wine_quality
@@ -51,20 +59,28 @@ pipeline {
             }
         }
 
-        stage('Invalid Request Test') {
+        stage('Send Invalid Request') {
             steps {
                 sh '''
-                echo "Sending INVALID request"
-                curl -s -X POST http://localhost:8000/predict \
+                echo "Sending invalid input..."
+                STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                -X POST http://localhost:8000/predict \
                 -H "Content-Type: application/json" \
-                -d @tests/invalid_input.json
+                -d @tests/invalid_input.json)
+
+                echo "HTTP Status: $STATUS"
+
+                if [ "$STATUS" -eq 200 ]; then
+                    echo "ERROR: Invalid input accepted!"
+                    exit 1
+                fi
                 '''
             }
         }
 
         stage('Stop Container') {
             steps {
-                sh 'docker rm -f $CONTAINER_NAME'
+                sh 'docker rm -f $CONTAINER || true'
             }
         }
     }

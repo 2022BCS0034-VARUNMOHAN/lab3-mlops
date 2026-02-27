@@ -2,67 +2,69 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "varuna10/varunmohanbcs34-wine-quality"
+        IMAGE_NAME = "varuna10/varunmohanbcs34-wine-quality:latest"
+        CONTAINER_NAME = "wine_api_test"
     }
 
     stages {
 
-        stage('Clone Repository') {
+        stage('Pull Image') {
             steps {
-                echo "Cloning repository..."
-                checkout scm
+                sh 'docker pull $IMAGE_NAME'
             }
         }
 
-        stage('Create Python Environment & Install Requirements') {
+        stage('Run Container') {
             steps {
                 sh '''
-                python3 -m venv venv
-                . venv/bin/activate
-                pip install -r api/requirements.txt
-                pip install scikit-learn pandas joblib
+                docker rm -f $CONTAINER_NAME || true
+                docker run -d -p 8000:8000 --name $CONTAINER_NAME $IMAGE_NAME
                 '''
             }
         }
 
-        stage('Train Model') {
+        stage('Wait for API') {
             steps {
                 sh '''
-                . venv/bin/activate
-                python scripts/train.py
+                echo "Waiting for API..."
+                for i in {1..20}
+                do
+                    sleep 3
+                    curl -s http://localhost:8000/health && break
+                done
                 '''
             }
         }
 
-        stage('Print Metrics + Student Info') {
+        stage('Valid Request Test') {
             steps {
                 sh '''
-                echo "===== MODEL METRICS ====="
-                cat Metrics/metrics.json
+                echo "Sending VALID request"
+                RESPONSE=$(curl -s -X POST http://localhost:8000/predict \
+                -H "Content-Type: application/json" \
+                -d @tests/valid_input.json)
 
-                echo ""
-                echo "Name: VARUN MOHAN"
-                echo "Roll No: 2022BCS0034"
+                echo $RESPONSE
+
+                echo $RESPONSE | grep wine_quality
                 '''
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Invalid Request Test') {
             steps {
                 sh '''
-                docker build -t $DOCKER_IMAGE:latest .
+                echo "Sending INVALID request"
+                curl -s -X POST http://localhost:8000/predict \
+                -H "Content-Type: application/json" \
+                -d @tests/invalid_input.json
                 '''
             }
         }
 
-        stage('Push to DockerHub') {
+        stage('Stop Container') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
-                    sh '''
-                    echo $PASSWORD | docker login -u $USERNAME --password-stdin
-                    docker push $DOCKER_IMAGE:latest
-                    '''
-                }
+                sh 'docker rm -f $CONTAINER_NAME'
             }
         }
     }

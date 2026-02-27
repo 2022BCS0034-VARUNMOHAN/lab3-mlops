@@ -30,14 +30,21 @@ pipeline {
                 sh '''
                 echo "Checking API readiness..."
 
-                for i in {1..20}; do
-                    if curl -s http://localhost:8000/health > /dev/null; then
-                        echo "API is ready"
-                        break
+                for i in {1..20}
+                do
+                    status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || true)
+
+                    if [ "$status" = "200" ]; then
+                        echo "API is ready!"
+                        exit 0
                     fi
-                    echo "Waiting..."
-                    sleep 3
+
+                    echo "Not ready yet..."
+                    sleep 2
                 done
+
+                echo "API failed to start"
+                exit 1
                 '''
             }
         }

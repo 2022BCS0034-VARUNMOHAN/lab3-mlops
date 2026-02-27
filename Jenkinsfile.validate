@@ -45,9 +45,9 @@ pipeline {
                 sh '''
                 echo "Checking API readiness..."
 
-                for i in {1..30}
+                for i in $(seq 1 30)
                 do
-                    status=$(curl -s -o /dev/null -w "%{http_code}" http://$CONTAINER_NAME:8000/health || true)
+                    status=$(curl -s -o /dev/null -w "%{http_code}" http://wine_test_container:8000/health || true)
 
                     if [ "$status" = "200" ]; then
                         echo "API is ready!"
@@ -55,11 +55,11 @@ pipeline {
                     fi
 
                     echo "Not ready yet... attempt $i"
-                    sleep 3
+                    sleep 2
                 done
 
                 echo "API failed to start"
-                docker logs $CONTAINER_NAME
+                docker logs wine_test_container
                 exit 1
                 '''
             }

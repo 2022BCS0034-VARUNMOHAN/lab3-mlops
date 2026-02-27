@@ -81,18 +81,18 @@ pipeline {
                 echo "Model Response:"
                 cat response.json
 
-                echo "Validating output..."
-                grep "wine_quality" response.json
+                echo "Checking if wine_quality exists..."
+                grep '"wine_quality"' response.json
 
-                # ensure it is numeric
-                value=$(grep -o '[0-9]\\+' response.json | head -n 1)
+                echo "Extracting prediction..."
+                value=$(grep -o '"wine_quality":[0-9]*' response.json | grep -o '[0-9]*')
+
+                echo "Predicted Quality = $value"
 
                 if [ -z "$value" ]; then
-                    echo "Prediction invalid!"
+                    echo "Prediction missing!"
                     exit 1
                 fi
-
-                echo "Prediction OK: $value"
                 '''
             }
         }
@@ -112,9 +112,8 @@ pipeline {
     }
 
     post {
-        always {
-            sh 'docker rm -f $CONTAINER_NAME || true'
-            sh 'docker network rm $NETWORK_NAME || true'
-        }
+    always {
+        sh 'docker rm -f $CONTAINER_NAME || true'
     }
+}
 }

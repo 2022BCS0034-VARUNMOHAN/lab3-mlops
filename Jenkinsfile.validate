@@ -4,10 +4,19 @@ pipeline {
     environment {
         IMAGE_NAME = "varuna10/varunmohanbcs34-wine-quality:latest"
         CONTAINER_NAME = "wine_test_container"
+        NETWORK_NAME = "wine_net"
         PORT = "8000"
     }
 
     stages {
+
+        stage('Create Network') {
+            steps {
+                sh '''
+                docker network inspect $NETWORK_NAME >/dev/null 2>&1 || docker network create $NETWORK_NAME
+                '''
+            }
+        }
 
         stage('Pull Docker Image') {
             steps {
@@ -19,7 +28,13 @@ pipeline {
             steps {
                 sh '''
                 docker rm -f $CONTAINER_NAME || true
-                docker run -d -p 8000:8000 --name $CONTAINER_NAME $IMAGE_NAME
+
+                docker run -d \
+                  --network $NETWORK_NAME \
+                  --name $CONTAINER_NAME \
+                  -p 8000:8000 \
+                  $IMAGE_NAME
+
                 docker ps
                 '''
             }
@@ -30,20 +45,21 @@ pipeline {
                 sh '''
                 echo "Checking API readiness..."
 
-                for i in {1..20}
+                for i in {1..30}
                 do
-                    status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || true)
+                    status=$(curl -s -o /dev/null -w "%{http_code}" http://$CONTAINER_NAME:8000/health || true)
 
                     if [ "$status" = "200" ]; then
                         echo "API is ready!"
                         exit 0
                     fi
 
-                    echo "Not ready yet..."
-                    sleep 2
+                    echo "Not ready yet... attempt $i"
+                    sleep 3
                 done
 
                 echo "API failed to start"
+                docker logs $CONTAINER_NAME
                 exit 1
                 '''
             }
@@ -52,7 +68,7 @@ pipeline {
         stage('Send Valid Request') {
             steps {
                 sh '''
-                curl -X POST http://localhost:8000/predict \
+                curl -f -X POST http://$CONTAINER_NAME:8000/predict \
                 -H "Content-Type: application/json" \
                 -d @tests/valid_input.json > response.json
                 '''
@@ -62,8 +78,21 @@ pipeline {
         stage('Validate Response') {
             steps {
                 sh '''
+                echo "Model Response:"
                 cat response.json
+
+                echo "Validating output..."
                 grep "wine_quality" response.json
+
+                # ensure it is numeric
+                value=$(grep -o '[0-9]\\+' response.json | head -n 1)
+
+                if [ -z "$value" ]; then
+                    echo "Prediction invalid!"
+                    exit 1
+                fi
+
+                echo "Prediction OK: $value"
                 '''
             }
         }
@@ -71,17 +100,21 @@ pipeline {
         stage('Send Invalid Request') {
             steps {
                 sh '''
-                curl -X POST http://localhost:8000/predict \
+                echo "Testing bad input validation..."
+
+                curl -s -o /dev/null -w "%{http_code}" \
+                -X POST http://$CONTAINER_NAME:8000/predict \
                 -H "Content-Type: application/json" \
-                -d @tests/invalid_input.json || true
+                -d @tests/invalid_input.json | grep -E "422|400"
                 '''
             }
         }
+    }
 
-        stage('Stop Container') {
-            steps {
-                sh 'docker rm -f $CONTAINER_NAME'
-            }
+    post {
+        always {
+            sh 'docker rm -f $CONTAINER_NAME || true'
+            sh 'docker network rm $NETWORK_NAME || true'
         }
     }
 }

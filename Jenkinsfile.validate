@@ -1,0 +1,71 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME = "varuna10/varunmohanbcs34-wine-quality:latest"
+        CONTAINER_NAME = "wine_test_container"
+        PORT = "8000"
+    }
+
+    stages {
+
+        stage('Pull Docker Image') {
+            steps {
+                sh 'docker pull $IMAGE_NAME'
+            }
+        }
+
+        stage('Run Container') {
+            steps {
+                sh '''
+                docker rm -f $CONTAINER_NAME || true
+                docker run -d -p 8000:8000 --name $CONTAINER_NAME $IMAGE_NAME
+                '''
+            }
+        }
+
+        stage('Wait for API') {
+            steps {
+                sh '''
+                echo "Waiting for API to start..."
+                sleep 15
+                '''
+            }
+        }
+
+        stage('Send Valid Request') {
+            steps {
+                sh '''
+                curl -X POST http://localhost:8000/predict \
+                -H "Content-Type: application/json" \
+                -d @tests/valid_input.json > response.json
+                '''
+            }
+        }
+
+        stage('Validate Response') {
+            steps {
+                sh '''
+                cat response.json
+                grep "wine_quality" response.json
+                '''
+            }
+        }
+
+        stage('Send Invalid Request') {
+            steps {
+                sh '''
+                curl -X POST http://localhost:8000/predict \
+                -H "Content-Type: application/json" \
+                -d @tests/invalid_input.json || true
+                '''
+            }
+        }
+
+        stage('Stop Container') {
+            steps {
+                sh 'docker rm -f $CONTAINER_NAME'
+            }
+        }
+    }
+}
